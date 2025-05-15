@@ -60,11 +60,10 @@ beta_levels = np.linspace(75, 750, 6).astype(int)
 
 for beta in beta_levels:
     for run in enumerate(runs):
-        experiment_name = f'l1_BETAx{beta}_{run}'
+        experiment_name = f'BETAx{beta}/{run}'
         if check_path_and_skip(experiment_name): continue
         python_cmd = generate_python_cmd(experiment_name, beta)
         generate_pbs_script(python_cmd, experiment_name)
-
 
 
 print('All experiments are finished / queued')
