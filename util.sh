@@ -11,11 +11,11 @@ done
 
 echo
 
-while IFS= read -r dir; do
-    if [[ -z "${jobnames[$dir]}" ]]; then
+find experiments -type d | while read -r dir; do
+    if [[ -z "$(find "$dir" -mindepth 1 -type d 2>/dev/null)" && \
+          ! -f "$dir/accuracy.png" && \
+          -z "${jobnames[$dir]}" ]]; then
         echo "Deleting $dir"
         rm -rf "$dir"
     fi
-done < <(find experiments -type d -empty)
-echo
-
+done

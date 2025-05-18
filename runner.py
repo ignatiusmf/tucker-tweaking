@@ -33,11 +33,6 @@ def generate_pbs_script(python_cmd, experiment_name):
     finally:
         temp_file.unlink(missing_ok=True)
 
-def generate_python_cmd(experiment_name, beta_level):
-    output = f"python tucker_distillation.py --beta {beta_level} --experiment_name {experiment_name}"
-    print(output)
-    return output
-
 def check_path_and_skip(experiment_name):
     experiment_path = Path(f'experiments/{experiment_name}')
     global total, limit
@@ -52,18 +47,26 @@ def check_path_and_skip(experiment_name):
     total += 1
     return False
 
-runs = 1
+def generate_python_cmd(experiment_name, beta_level, loss, distillation):
+    output = f"python tucker_distillation.py --loss {loss} --distillation {distillation} --beta {beta_level} --experiment_name {experiment_name}"
+    print(output)
+    return output
 
 import numpy as np
-
+runs = 1
 beta_levels = np.linspace(75, 750, 6).astype(int)
+losses = ['l1', 'l2']
+distillations = ['tucker_recomp', 'featuremap', 'tucker']
 
-for beta in beta_levels:
-    for run in enumerate(runs):
-        experiment_name = f'BETAx{beta}/{run}'
-        if check_path_and_skip(experiment_name): continue
-        python_cmd = generate_python_cmd(experiment_name, beta)
-        generate_pbs_script(python_cmd, experiment_name)
+for loss in losses:
+    for distillation in distillations:
+        for beta in beta_levels:
+            for run in range(runs):
+                experiment_name = f'{loss}/{distillation}/BETAx{beta}/{run}'
+                if check_path_and_skip(experiment_name): continue
+                python_cmd = generate_python_cmd(experiment_name, beta, loss, distillation)
+                generate_pbs_script(python_cmd, experiment_name)
+                exit()
 
 
 print('All experiments are finished / queued')

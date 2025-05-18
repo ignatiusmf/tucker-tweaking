@@ -5,6 +5,7 @@ from toolbox.utils import plot_the_things, evaluate_model
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
+import torch.nn as nn
 
 import tensorly as tl
 
@@ -13,7 +14,7 @@ import argparse
 
 DEVICE = "cuda"
 EPOCHS = 150
-BATCH_SIZE = 128
+BATCH_SIZE = 128*4
 
 tl.set_backend("pytorch")
 def tucker(feature_map, ranks=[BATCH_SIZE, 32, 8, 8]): 
@@ -34,7 +35,7 @@ def tucker_distillation(teacher_outputs, student_outputs, targets, ranks=None):
     teacher_core , teacher_factors = tucker(teacher_fmap, ranks)
     student_core = compute_core(student_fmap, teacher_factors)
 
-    tucker_loss = BETA * F.l1_loss(FT(teacher_core), FT(student_core))
+    tucker_loss = BETA * LOSS(FT(teacher_core), FT(student_core))
     hard_loss = F.cross_entropy(student_outputs[3], targets)
     return tucker_loss, hard_loss
 
@@ -45,16 +46,16 @@ def tucker_recomp_distillation(teacher_outputs, student_outputs, targets,recomp_
     teacher_core , teacher_factors = tucker(teacher_fmap, ranks)
     if recomp_target == 'teacher':
         teacher_reconstructed = tl.tucker_to_tensor((teacher_core, teacher_factors))
-        soft_loss = BETA * F.l1_loss(FT(teacher_reconstructed), FT(student_fmap))
+        soft_loss = BETA * LOSS(FT(teacher_reconstructed), FT(student_fmap))
     elif recomp_target == 'student':
         student_core = compute_core(student_fmap, teacher_factors)
         student_reconstructed = tl.tucker_to_tensor((student_core, teacher_factors))
-        soft_loss = BETA * F.l1_loss(FT(teacher_fmap), FT(student_reconstructed))
+        soft_loss = BETA * LOSS(FT(teacher_fmap), FT(student_reconstructed))
     elif recomp_target == 'both':
         student_core = compute_core(student_fmap, teacher_factors)
         teacher_reconstructed = tl.tucker_to_tensor((teacher_core, teacher_factors))
         student_reconstructed = tl.tucker_to_tensor((student_core, teacher_factors))
-        soft_loss = BETA * F.l1_loss(FT(teacher_reconstructed), FT(student_reconstructed))
+        soft_loss = BETA * LOSS(FT(teacher_reconstructed), FT(student_reconstructed))
 
     hard_loss = F.cross_entropy(student_outputs[3], targets)
     return soft_loss, hard_loss
@@ -62,7 +63,7 @@ def tucker_recomp_distillation(teacher_outputs, student_outputs, targets,recomp_
 def feature_map_distillation(teacher_outputs, student_outputs, targets):
     teacher_fmap = teacher_outputs[2]
     student_fmap = student_outputs[2]
-    soft_loss = BETA * F.l1_loss(FT(teacher_fmap), FT(student_fmap))
+    soft_loss = BETA * LOSS(FT(teacher_fmap), FT(student_fmap))
     hard_loss = F.cross_entropy(student_outputs[3], targets)
     return soft_loss, hard_loss
 
@@ -72,18 +73,26 @@ DISTILLATIONS = {
     'featuremap': feature_map_distillation
 }
 
+LOSSES = {
+    'l1': nn.L1Loss(),
+    'l2': nn.MSELoss()
+}
+
 parser = argparse.ArgumentParser(description='Run a training script with custom parameters.')
 parser.add_argument('--beta', type=int, default='125')
 parser.add_argument('--experiment_name', type=str, default='test')
+parser.add_argument('--distillation', type=str, default='tucker', choices=DISTILLATIONS.keys())
+parser.add_argument('--loss', type=str, default='l1')
 args = parser.parse_args()
 
-Distillation = DISTILLATIONS['featuremap']
-Ranks = [BATCH_SIZE,32,8,8]
-Recomp_target = "both"
-experiment_path = "test"
+DISTILLATION = DISTILLATIONS[args.distillation]
+RANKS = [BATCH_SIZE,32,8,8]
+RECOMP_TARGET = "both"
+EXPERIMENT_PATH = args.experiment_name
+LOSS = LOSSES[args.loss]
 BETA = args.beta
 
-Path(f"experiments/{experiment_path}").mkdir(parents=True, exist_ok=True)
+Path(f"experiments/{EXPERIMENT_PATH}").mkdir(parents=True, exist_ok=True)
 print(vars(args))
 
 # Model setup
@@ -112,21 +121,19 @@ for i in range(EPOCHS):
     student.train()
     total_hard_loss, total_soft_loss, correct, total = 0, 0, 0, 0
     for batch_idx, (inputs, targets) in enumerate(trainloader):
-        if batch_idx % 10 == 0:
-            print(batch_idx)
         inputs, targets = inputs.to(DEVICE), targets.to(DEVICE)
 
         optimizer.zero_grad()
 
         teacher_outputs = teacher(inputs)
         student_outputs = student(inputs)
-        if Distillation.__name__ == 'feature_map_distillation':
-            soft_loss, hard_loss = Distillation(teacher_outputs, student_outputs, targets)
+        if DISTILLATION.__name__ == 'feature_map_distillation':
+            soft_loss, hard_loss = DISTILLATION(teacher_outputs, student_outputs, targets)
         else:
-            if Distillation.__name__ == 'tucker_recomp_distillation':
-                soft_loss, hard_loss = Distillation(teacher_outputs, student_outputs, targets, Recomp_target, Ranks)
+            if DISTILLATION.__name__ == 'tucker_recomp_distillation':
+                soft_loss, hard_loss = DISTILLATION(teacher_outputs, student_outputs, targets, RECOMP_TARGET, RANKS)
             else:
-                soft_loss, hard_loss = Distillation(teacher_outputs, student_outputs, targets, Ranks)
+                soft_loss, hard_loss = DISTILLATION(teacher_outputs, student_outputs, targets, RANKS)
 
         loss = soft_loss + hard_loss
         loss.backward()
@@ -156,13 +163,13 @@ for i in range(EPOCHS):
 
     if tea > max_acc:
         max_acc = tea
-        torch.save({'weights': student.state_dict()}, f'experiments/{experiment_path}/ResNet56.pth')
+        torch.save({'weights': student.state_dict()}, f'experiments/{EXPERIMENT_PATH}/ResNet56.pth')
     
-    plot_the_things((train_hard_loss, train_soft_loss), test_loss, train_acc, test_acc, experiment_path)
+    plot_the_things((train_hard_loss, train_soft_loss), test_loss, train_acc, test_acc, EXPERIMENT_PATH)
 
 import json
 
-with open(f'experiments/{experiment_path}/metrics.json', 'w') as f:
+with open(f'experiments/{EXPERIMENT_PATH}/metrics.json', 'w') as f:
     json.dump({
         'train_hard_loss': train_hard_loss,
         'train_soft_loss': train_soft_loss,
