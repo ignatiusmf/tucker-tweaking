@@ -26,7 +26,7 @@ def plot_the_things(train_loss, test_loss, train_acc, test_acc, experiment_path)
 
         plt.xlabel('Epoch')
         plt.xlim(0,len(test_loss))
-        plt.ylabel('Log10 Loss')
+        plt.ylabel('Loss')
     
         plt.legend()
         plt.savefig(f'experiments/{experiment_path}/Loss.png')

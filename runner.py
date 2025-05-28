@@ -53,20 +53,19 @@ def generate_python_cmd(experiment_name, beta_level, loss, distillation):
     return output
 
 import numpy as np
-runs = 1
-beta_levels = np.linspace(75, 750, 6).astype(int)
+runs = 3
+beta_levels = np.arange(0, 1200, 200).astype(int)
 losses = ['l1', 'l2']
 distillations = ['tucker_recomp', 'featuremap', 'tucker']
 
-for loss in losses:
-    for distillation in distillations:
-        for beta in beta_levels:
-            for run in range(runs):
-                experiment_name = f'{loss}/{distillation}/BETAx{beta}/{run}'
-                if check_path_and_skip(experiment_name): continue
-                python_cmd = generate_python_cmd(experiment_name, beta, loss, distillation)
-                generate_pbs_script(python_cmd, experiment_name)
-                exit()
+loss = 'l1'
+distillation  = 'featuremap'
+for run in range(runs):
+    for beta in beta_levels:
+        experiment_name = f'{loss}/{distillation}/BETAx{beta:03d}/{run}'
+        if check_path_and_skip(experiment_name): continue
+        python_cmd = generate_python_cmd(experiment_name, beta, loss, distillation)
+        generate_pbs_script(python_cmd, experiment_name)
 
 
 print('All experiments are finished / queued')
